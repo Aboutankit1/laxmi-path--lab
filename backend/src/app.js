@@ -26,32 +26,44 @@ const app = express();
 
 // Security & core middleware
 app.use(helmet());
+
+// ✅ UPDATED CORS CONFIGURATION
 app.use(
   cors({
     origin: (origin, callback) => {
+      // Define allowed origins
       const allowedOrigins = [
         "http://localhost:5173",
         "http://localhost:5174",
         "http://localhost:5175",
+        "https://laxmi-path-lab-1.onrender.com",
         process.env.CLIENT_URL,
       ].filter(Boolean);
 
       // Allow all localhost origins in development
       if (process.env.NODE_ENV !== "production") {
-        if (!origin || origin.includes("localhost")) {
+        if (!origin || origin.includes("localhost") || origin.includes("127.0.0.1")) {
           return callback(null, true);
         }
       }
 
-      if (allowedOrigins.includes(origin)) {
+      // Check if origin is allowed
+      if (allowedOrigins.includes(origin) || (origin && origin.includes('onrender.com'))) {
+        console.log(`[CORS] ✅ Allowed: ${origin}`);
         callback(null, true);
       } else {
-        callback(new Error("Not allowed by CORS"));
+        console.log(`[CORS] ❌ Blocked: ${origin}`);
+        callback(new Error(`CORS policy: ${origin} not allowed`));
       }
     },
     credentials: true,
-  }),
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    maxAge: 86400, // 24 hours
+  })
 );
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(mongoSanitize());
@@ -71,7 +83,7 @@ app.use("/api/auth/forgot-password", authLimiter);
 
 // Health check
 app.get("/api/health", (req, res) =>
-  res.json({ success: true, message: "Laxmi Path Lab API is running" }),
+  res.json({ success: true, message: "Laxmi Path Lab API is running" })
 );
 
 // Routes
