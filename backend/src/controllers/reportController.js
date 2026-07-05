@@ -45,7 +45,7 @@ const getReports = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
-      .populate("patient", "name patientId mobile email age gender referredBy")
+      .populate("patient", "name patientId mobile email")
       .populate("test", "name testCode"),
     Report.countDocuments(query),
   ]);
@@ -59,8 +59,8 @@ const getReports = asyncHandler(async (req, res) => {
 
 const getReportById = asyncHandler(async (req, res) => {
   const report = await Report.findById(req.params.id)
-    .populate("patient", "name patientId mobile email age gender referredBy")
-    .populate("test", "name testCode")
+    .populate("patient")
+    .populate("test")
     .populate("verifiedBy", "name");
   if (!report) {
     res.status(404);
@@ -71,38 +71,22 @@ const getReportById = asyncHandler(async (req, res) => {
 
 const generatePdfForReport = asyncHandler(async (req, res) => {
   const report = await Report.findById(req.params.id)
-    .populate("patient", "name patientId mobile email age gender referredBy")
-    .populate("test", "name testCode")
+    .populate("patient")
+    .populate("test")
     .populate("verifiedBy", "name");
-  
   if (!report) {
     res.status(404);
     throw new Error("Report not found");
   }
 
   const settings = (await Settings.findOne()) || {};
-  
-  // ✅ PDF ke liye data prepare karo - proper format mein
-  const pdfData = {
-    patient: {
-      name: report.patient?.name || 'N/A',
-      age: report.patient?.age || 'N/A',
-      gender: report.patient?.gender || 'MALE',
-    },
-    reportNumber: report.reportNumber,
-    referredBy: report.patient?.referredBy || 'SELF',
-    results: report.results || [],
+  const pdfBuffer = await generateReportPDF({
+    labInfo: settings,
+    patient: report.patient,
     test: report.test,
-    verifiedBy: report.verifiedBy?.name || 'Dr. R. KUMAR',
-    labInfo: {
-      labName: settings?.labName || 'Laxmi Path Lab',
-      address: settings?.address || 'D-150, 30 FUTA ROAD, OM ENCLAVE, PART-2, FARIDABAD, HARYANA-121003',
-      phone: settings?.contactNumber || '+91-7982625884, 9871836218',
-      email: settings?.email || 'bhairavjha7@gmail.com',
-    }
-  };
-
-  const pdfBuffer = await generateReportPDF(pdfData);
+    results: report.results,
+    verifiedBy: report.verifiedBy?.name,
+  });
 
   report.status = "Completed";
   report.completedAt = new Date();
@@ -117,42 +101,31 @@ const generatePdfForReport = asyncHandler(async (req, res) => {
 
 const emailReport = asyncHandler(async (req, res) => {
   const report = await Report.findById(req.params.id)
-    .populate("patient", "name patientId mobile email age gender referredBy")
-    .populate("test", "name testCode")
+    .populate("patient")
+    .populate("test")
     .populate("verifiedBy", "name");
-  
   if (!report) {
     res.status(404);
     throw new Error("Report not found");
   }
-  
-  if (!report.patient?.email) {
+  if (!report.patient.email) {
     res.status(400);
     throw new Error("Patient does not have an email on file");
   }
 
   const settings = (await Settings.findOne()) || {};
-  
-  const pdfData = {
-    patient: {
-      name: report.patient?.name || 'N/A',
-      age: report.patient?.age || 'N/A',
-      gender: report.patient?.gender || 'MALE',
-    },
-    reportNumber: report.reportNumber,
-    referredBy: report.patient?.referredBy || 'SELF',
-    results: report.results || [],
-    test: report.test,
-    verifiedBy: report.verifiedBy?.name || 'Dr. R. KUMAR',
+  const pdfBuffer = await generateReportPDF({
     labInfo: settings,
-  };
-
-  const pdfBuffer = await generateReportPDF(pdfData);
+    patient: report.patient,
+    test: report.test,
+    results: report.results,
+    verifiedBy: report.verifiedBy?.name,
+  });
 
   await sendEmail({
     to: report.patient.email,
     subject: `Your Lab Report - ${report.reportNumber}`,
-    html: `<p>Dear ${report.patient.name},</p><p>Please find attached your report for ${report.test?.name || 'test'}.</p>`,
+    html: `<p>Dear ${report.patient.name},</p><p>Please find attached your report for ${report.test.name}.</p>`,
     attachments: [
       { filename: `${report.reportNumber}.pdf`, content: pdfBuffer },
     ],
